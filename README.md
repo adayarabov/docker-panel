@@ -4,18 +4,17 @@ A [Claude Code](https://claude.com/claude-code) mod that keeps your Docker Compo
 
 Works in the terminal and in the desktop app's Code tab.
 
-```
-╭─────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ⬢ shop-demo   ✕ api:38081 exited(1) ↻5   ● web:38080   ● worker                           × │
-│ ▲ api exited with code 1, 5 restarts            [ Ask Claude ] [ Logs api ] [ Restart api ] │
-╰─────────────────────────────────────────────────────────────────────────────────────────────╯
-```
+![The band above the prompt in the desktop app](docs/images/band-desktop.png)
+
+![The band in the terminal](docs/images/band-terminal.png)
+
+<img src="docs/images/pane-desktop.png" alt="The control pane opened with More: a card per service with its own actions" width="480">
 
 ## Features
 
-- **Live status** — one chip per Compose service: running, healthy, starting, unhealthy, exited with code, restart count. Published ports link to `http://localhost:<port>`.
+- **Live status** — row one sums up the project: how many services are up, total CPU and RAM, the current problem and the actions. Row two has one chip per Compose service: running, healthy, starting, unhealthy, exited with code, restart count. Published ports link to `http://localhost:<port>`.
+- **Control pane** — **More** opens a pane beside the transcript with stack-wide actions and a card per service: state, image, ports, CPU and memory, its own Start / Stop / Restart / Rebuild buttons and its logs on demand. It scrolls when there are many services.
 - **Event-driven** — follows `docker compose events`, with a 15-second fallback poll. No compose file in the session directory, no band.
-- **Hover details** — point at a chip to see Docker's status line, why it is stale, and the last log lines of a failing service.
 - **Crash alerts** — a toast when a service exits non-zero, crash-loops or turns unhealthy. **Ask Claude** puts the failure and its logs into the prompt.
 - **Stale config detection** — compares each running container's compose config hash with the current file, and the image build time with the Dockerfile. **Rebuild & up** rebuilds just the stale services.
 - **Context-aware actions** — Up / Up --build when nothing runs; Logs / Restart / Down when healthy; Ask Claude / Logs / Restart for the failing service.
@@ -51,8 +50,10 @@ The band appears on its own in any directory with `compose.yaml`, `compose.yml`,
 | `/docker down` | `docker compose down` (volumes are kept) |
 | `/docker restart [svc]` | `docker compose restart` |
 | `/docker rebuild [svc]` | `up -d --build` for the named or stale services |
-| `/docker logs [svc]` | Last 40 log lines into the transcript |
+| `/docker more` / `/docker logs [svc]` | Opens the control pane, with `svc`'s logs unfolded (the last 40 lines into the transcript where no pane fits) |
+| `/docker start <svc>` / `stop <svc>` | Start or stop one service |
 | `/docker-panel hide` / `show` | Hide or bring back the band; remembered across sessions |
+| `/docker-panel use <dir>` | Follow the compose project in another directory (a monorepo's `docker/`, say); remembered per session directory, `use .` goes back |
 
 The `×` in the band's corner hides it too. Band buttons have hotkeys once the band holds focus (`ctrl+x tab` or a click).
 
@@ -71,7 +72,7 @@ Set `CRASH=1` in its `.env` and run `docker compose up -d api` to watch a crash 
 ## Limitations
 
 - Stale image detection looks at the Dockerfile only, not the rest of the build context.
-- Mouse hover and clicks in the terminal need Claude Code's fullscreen mode; commands work everywhere.
+- Mouse clicks in the terminal need Claude Code's fullscreen mode; commands and hotkeys work everywhere.
 - Function-hook mods are early access: the API may change between Claude Code releases.
 
 ## Development

@@ -1,12 +1,12 @@
 // Pure parsing and derivation over docker CLI output; no `$` here, so tests reach it directly.
-import type { Service, ServiceStatus, Snapshot, StaleReason } from '../types'
+import type { Service, ServiceStatus, Snapshot, StaleReason, Stats, Usage } from '../types'
 
 export const COMPOSE_FILES = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml']
 
 /** Container lifecycle events worth a refresh; healthcheck exec_* noise is not among them. */
 const RELEVANT_ACTION = /^(create|start|restart|stop|die|kill|destroy|pause|unpause|oom|health_status)/
 
-export type ConfigService = { name: string; buildDockerfile: string | null }
+export type ConfigService = { name: string; buildDockerfile: string | null; image: string | null }
 export type ComposeConfig = { project: string; services: ConfigService[] }
 
 export type PsRow = {
@@ -18,6 +18,7 @@ export type PsRow = {
   statusText: string
   ports: number[]
   configHash: string | null
+  image: string
 }
 
 export type ContainerFacts = { restarts: number; imageId: string }
@@ -37,13 +38,14 @@ export type Inputs = {
 export function parseConfig(json: string): ComposeConfig {
   const data = JSON.parse(json) as {
     name?: string
-    services?: Record<string, { build?: { context?: string; dockerfile?: string } }>
+    services?: Record<string, { image?: string; build?: { context?: string; dockerfile?: string } }>
   }
   const services = Object.entries(data.services ?? {}).map(([name, spec]) => ({
     name,
     buildDockerfile: spec.build?.context
       ? joinPath(spec.build.context, spec.build.dockerfile ?? 'Dockerfile')
       : null,
+    image: spec.image ?? null,
   }))
   return { project: data.name ?? 'compose', services }
 }
@@ -84,6 +86,7 @@ function toPsRow(item: Record<string, unknown>): PsRow {
     statusText: String(item.Status ?? ''),
     ports,
     configHash: hash?.[1] ?? null,
+    image: String(item.Image ?? ''),
   }
 }
 
@@ -156,6 +159,9 @@ export function buildSnapshot(inputs: Inputs): Snapshot {
       ports: [...new Set(rows.flatMap(r => r.ports))].sort((a, b) => a - b),
       stale: staleOf(inputs, service, row),
       logTail: inputs.logTails[service.name] ?? [],
+      containerIds: rows.map(r => r.id),
+      image: row?.image || service.image || (service.buildDockerfile ? 'built locally' : ''),
+      hasBuild: service.buildDockerfile !== null,
     }
   })
   return { project: inputs.config.project, file: inputs.file, services, checkedAt: inputs.checkedAt }
@@ -218,6 +224,64 @@ export function failureText(service: Service): string {
 
 export function staleServices(snapshot: Snapshot): string[] {
   return snapshot.services.filter(s => s.stale !== null).map(s => s.name)
+}
+
+const UNIT: Record<string, number> = {
+  b: 1,
+  kb: 1e3,
+  mb: 1e6,
+  gb: 1e9,
+  tb: 1e12,
+  kib: 2 ** 10,
+  mib: 2 ** 20,
+  gib: 2 ** 30,
+  tib: 2 ** 40,
+}
+
+/** "12.3MiB" → bytes; 0 for anything it cannot read. */
+export function parseBytes(text: string): number {
+  const match = /^([\d.]+)\s*([a-z]+)$/i.exec(text.trim())
+  if (!match) return 0
+  return Number(match[1]) * (UNIT[(match[2] ?? '').toLowerCase()] ?? 0)
+}
+
+/** `docker stats --no-stream --format '{{json .}}'`, summed per service by container id. */
+export function parseStats(text: string, snapshot: Snapshot): Stats {
+  const serviceOf = new Map<string, string>()
+  for (const service of snapshot.services) {
+    for (const id of service.containerIds) serviceOf.set(id.slice(0, 12), service.name)
+  }
+  const byService: Record<string, Usage> = {}
+  const total: Usage = { cpuPercent: 0, memBytes: 0 }
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    const row = JSON.parse(line) as { ID?: string; CPUPerc?: string; MemUsage?: string }
+    const service = serviceOf.get(String(row.ID ?? '').slice(0, 12))
+    if (!service) continue
+    const cpuPercent = Number.parseFloat(row.CPUPerc ?? '') || 0
+    const memBytes = parseBytes(String(row.MemUsage ?? '').split('/')[0] ?? '')
+    const before = byService[service] ?? { cpuPercent: 0, memBytes: 0 }
+    byService[service] = { cpuPercent: before.cpuPercent + cpuPercent, memBytes: before.memBytes + memBytes }
+    total.cpuPercent += cpuPercent
+    total.memBytes += memBytes
+  }
+  return { total, byService }
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes >= 2 ** 30) return `${(bytes / 2 ** 30).toFixed(1)}G`
+  if (bytes >= 2 ** 20) return `${Math.round(bytes / 2 ** 20)}M`
+  return `${Math.round(bytes / 2 ** 10)}K`
+}
+
+export function formatUsage(usage: Usage): string {
+  return `CPU ${usage.cpuPercent.toFixed(usage.cpuPercent < 10 ? 1 : 0)}% · RAM ${formatBytes(usage.memBytes)}`
+}
+
+/** "5/7 up": containers running (any health) out of the services the file declares. */
+export function upSummary(snapshot: Snapshot): string {
+  const up = snapshot.services.filter(s => ['healthy', 'running', 'starting', 'unhealthy'].includes(s.status))
+  return `${up.length}/${snapshot.services.length} up`
 }
 
 function joinPath(dir: string, file: string): string {

@@ -1,22 +1,33 @@
-// Which buttons the band offers for a snapshot, and what each one does.
-import type { Snapshot } from '../types'
+// Which buttons the band and the control pane offer, and what each one does.
+import type { Service, Snapshot } from '../types'
 import { failureText, isFailing, severityOf, staleServices } from './compose'
 
 export type ActionRun =
   | { kind: 'compose'; args: string[]; busy: string }
   | { kind: 'ask'; service: string }
-  | { kind: 'logs'; service: string | null }
+  /** Opens the control pane, with `service`'s logs unfolded when one is named. */
+  | { kind: 'more'; service: string | null }
 
 export type Action = {
   key: string
   label: string
-  hotkey: string
+  hotkey?: string
   isPrimary: boolean
   run: ActionRun
 }
 
-const up = (extra: string[], busy: string): ActionRun => ({ kind: 'compose', args: ['up', '-d', ...extra], busy })
+const compose = (args: string[], busy: string): ActionRun => ({ kind: 'compose', args, busy })
+const up = (extra: string[], busy: string): ActionRun => compose(['up', '-d', ...extra], busy)
 
+const more = (service: string | null): Action => ({
+  key: 'more',
+  label: 'More',
+  hotkey: 'm',
+  isPrimary: false,
+  run: { kind: 'more', service },
+})
+
+/** The band's buttons: the one thing to do now, the stack-wide basics, and More. */
 export function actionsFor(snapshot: Snapshot): Action[] {
   const severity = severityOf(snapshot)
 
@@ -24,14 +35,14 @@ export function actionsFor(snapshot: Snapshot): Action[] {
     const failing = snapshot.services.find(isFailing)!.name
     return [
       { key: 'ask', label: 'Ask Claude', hotkey: 'a', isPrimary: true, run: { kind: 'ask', service: failing } },
-      { key: 'logs', label: `Logs ${failing}`, hotkey: 'l', isPrimary: false, run: { kind: 'logs', service: failing } },
       {
         key: 'restart',
         label: `Restart ${failing}`,
         hotkey: 'r',
         isPrimary: false,
-        run: { kind: 'compose', args: ['restart', failing], busy: `restarting ${failing}` },
+        run: compose(['restart', failing], `restarting ${failing}`),
       },
+      more(failing),
     ]
   }
 
@@ -39,6 +50,7 @@ export function actionsFor(snapshot: Snapshot): Action[] {
     return [
       { key: 'up', label: 'Up', hotkey: 'u', isPrimary: true, run: up([], 'starting') },
       { key: 'up-build', label: 'Up --build', hotkey: 'b', isPrimary: false, run: up(['--build'], 'building and starting') },
+      more(null),
     ]
   }
 
@@ -52,30 +64,49 @@ export function actionsFor(snapshot: Snapshot): Action[] {
         isPrimary: true,
         run: up(['--build', ...stale], `rebuilding ${stale.join(', ')}`),
       },
-      { key: 'logs', label: 'Logs', hotkey: 'l', isPrimary: false, run: { kind: 'logs', service: null } },
+      more(null),
     ]
   }
 
   return [
-    { key: 'logs', label: 'Logs', hotkey: 'l', isPrimary: false, run: { kind: 'logs', service: null } },
-    {
-      key: 'restart',
-      label: 'Restart',
-      hotkey: 'r',
-      isPrimary: false,
-      run: { kind: 'compose', args: ['restart'], busy: 'restarting' },
-    },
-    {
-      key: 'down',
-      label: 'Down',
-      hotkey: 'd',
-      isPrimary: false,
-      run: { kind: 'compose', args: ['down'], busy: 'stopping' },
-    },
+    { key: 'restart', label: 'Restart', hotkey: 'r', isPrimary: false, run: compose(['restart'], 'restarting') },
+    { key: 'down', label: 'Down', hotkey: 'd', isPrimary: false, run: compose(['down'], 'stopping') },
+    more(null),
   ]
 }
 
-/** The note drawn beside the buttons; null when everything is fine. */
+const isRunning = (service: Service): boolean =>
+  ['healthy', 'running', 'starting', 'unhealthy', 'restarting'].includes(service.status)
+
+/** One service card's buttons in the control pane. Logs is the pane's own toggle, not listed here. */
+export function serviceActions(service: Service): Action[] {
+  const name = service.name
+  const actions: Action[] = []
+  if (isFailing(service)) {
+    actions.push({ key: `ask-${name}`, label: 'Ask Claude', isPrimary: true, run: { kind: 'ask', service: name } })
+  }
+  if (isRunning(service)) {
+    actions.push(
+      { key: `stop-${name}`, label: 'Stop', isPrimary: false, run: compose(['stop', name], `stopping ${name}`) },
+      { key: `restart-${name}`, label: 'Restart', isPrimary: false, run: compose(['restart', name], `restarting ${name}`) },
+    )
+  } else {
+    actions.push({ key: `start-${name}`, label: 'Start', isPrimary: !isFailing(service), run: up([name], `starting ${name}`) })
+  }
+  if (service.hasBuild) {
+    actions.push({
+      key: `rebuild-${name}`,
+      label: 'Rebuild',
+      isPrimary: service.stale !== null,
+      run: up(['--build', name], `rebuilding ${name}`),
+    })
+  } else if (service.stale) {
+    actions.push({ key: `recreate-${name}`, label: 'Recreate', isPrimary: true, run: up([name], `recreating ${name}`) })
+  }
+  return actions
+}
+
+/** The note drawn on the band's first row; null when everything is fine. */
 export function noteFor(snapshot: Snapshot): string | null {
   const severity = severityOf(snapshot)
   if (severity === 'failing') return failureText(snapshot.services.find(isFailing)!)
@@ -102,14 +133,19 @@ export function commandRun(args: string, snapshot: Snapshot | null): ActionRun |
   switch (verb) {
     case 'up':
       return up(target, 'starting')
+    case 'start':
+      return up(target, `starting ${service ?? ''}`.trim())
+    case 'stop':
+      return compose(['stop', ...target], `stopping ${service ?? ''}`.trim())
     case 'rebuild':
       return up(['--build', ...(service ? target : snapshot ? staleServices(snapshot) : [])], 'rebuilding')
     case 'restart':
-      return { kind: 'compose', args: ['restart', ...target], busy: `restarting ${service ?? ''}`.trim() }
+      return compose(['restart', ...target], `restarting ${service ?? ''}`.trim())
     case 'down':
-      return { kind: 'compose', args: ['down'], busy: 'stopping' }
+      return compose(['down'], 'stopping')
     case 'logs':
-      return { kind: 'logs', service: service ?? null }
+    case 'more':
+      return { kind: 'more', service: service ?? null }
     default:
       return null
   }

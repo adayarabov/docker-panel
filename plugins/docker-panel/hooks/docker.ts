@@ -110,6 +110,27 @@ export async function logTail(host: Host, service: string | null, lines: number)
     .slice(-lines)
 }
 
+/**
+ * The directory `/docker-panel use <arg>` points at: `arg` taken relative to the
+ * session's directory unless absolute; empty or "." is the session's own.
+ */
+export function resolveProjectDir(sessionCwd: string, arg: string): string {
+  const trimmed = arg.trim()
+  const joined = trimmed.startsWith('/') ? trimmed : `${sessionCwd}/${trimmed}`
+  const parts: string[] = []
+  for (const part of joined.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return `/${parts.join('/')}`
+}
+
+/** Store key under which the chosen project directory is kept, per session directory. */
+export function projectDirKey(sessionCwd: string): string {
+  return `projectDir:${sessionCwd}`
+}
+
 export function lastLine(text: string): string {
   return text.trim().split('\n').pop()?.trim() || 'docker did not answer'
 }

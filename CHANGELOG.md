@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `/docker-panel use <dir>` points the band at a compose project outside the session's directory, remembered per session directory.
+- Control pane beside the transcript, opened by the band's **More** button, `/docker more` or `/docker logs [svc]`: stack-wide Up all / Restart all / Down, then a card per service with its state, image, ports, CPU and memory and its own Start / Stop / Restart / Rebuild (or Recreate) / Ask Claude buttons. Each card unfolds its logs, followed every 2 seconds. The pane scrolls when the cards outgrow it.
+- `/docker start <svc>` and `/docker stop <svc>`.
+- CPU and memory from `docker stats`, sampled every 10 seconds: the project total on the band, per service in the control pane.
+
+### Changed
+
+- The band is two rows: project, up count, usage, the problem and the actions on row one; the service chips from row two on.
+- The band's Logs button is now **More**, and the hover details above the band are gone; both moved into the control pane.
+
+### Fixed
+
+- `/docker` and `/docker-panel` are answered when the session names them with the plugin prefix.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added
