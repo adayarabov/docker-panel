@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-06
+
 ### Added
 
 - `/docker-panel use <dir>` points the band at a compose project outside the session's directory, remembered per session directory.
@@ -35,5 +37,6 @@ All notable changes to this project are documented here. The format follows
 - `/docker` command for status and actions, `/docker-panel show|hide` and a corner × to hide the band.
 - `examples/shop-demo` seven-service demo stack.
 
-[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SKFabric/docker-panel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SKFabric/docker-panel/releases/tag/v0.1.0
