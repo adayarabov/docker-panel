@@ -15,9 +15,12 @@ const INITIAL: Panel = {
   snapshot: null,
   stats: null,
   busy: null,
+  busyService: null,
+  busyVerb: null,
   error: null,
   daemonError: null,
   isHidden: false,
+  isPaneOpen: false,
 }
 const HIDDEN_KEY = 'isHidden'
 const panel = atom({ plugin: 'docker-panel', key: 'panel' } as const, INITIAL)
@@ -91,6 +94,8 @@ async function refresh($: EngineInterface): Promise<void> {
         availability: 'ok',
         snapshot: result.snapshot,
         busy: runtime.isActing ? p.busy : null,
+        busyService: runtime.isActing ? p.busyService : null,
+        busyVerb: runtime.isActing ? p.busyVerb : null,
         daemonError: null,
       }))
     } else if (result.kind === 'no-daemon') {
@@ -132,7 +137,7 @@ async function refreshStats($: EngineInterface): Promise<void> {
   }
 }
 
-async function isPaneOpen($: EngineInterface): Promise<boolean> {
+async function isPaneUp($: EngineInterface): Promise<boolean> {
   return (await $.ui.panes()).some(pane => pane.id === PANE_ID)
 }
 
@@ -159,7 +164,14 @@ async function openControl($: EngineInterface, service: string | null): Promise<
   }
   const project = (await read($, panel)).snapshot?.project ?? 'compose'
   const opened = await $.ui.open({ id: PANE_ID, title: `Docker · ${project}` })
+  if (opened.isPlaced) await update($, panel, (p): Panel => ({ ...p, isPaneOpen: true }))
   return opened.isPlaced
+}
+
+/** Less: closes the control pane. Our own close skips our `ui.close` hook, so the flag is set here. */
+async function closeControl($: EngineInterface): Promise<void> {
+  await $.ui.close({ id: PANE_ID })
+  await update($, panel, (p): Panel => ({ ...p, isPaneOpen: false }))
 }
 
 async function toggleLogs($: EngineInterface, service: string): Promise<void> {
@@ -235,9 +247,24 @@ async function perform($: EngineInterface, run: ActionRun): Promise<string> {
     const title = run.service ? `Last ${lines.length} lines of ${run.service}` : `Last ${lines.length} log lines`
     return `${title}:\n\`\`\`\n${lines.join('\n') || '(no output)'}\n\`\`\``
   }
-  if (runtime.isActing) return 'Another docker action is still running.'
+  if (run.kind === 'less') {
+    await closeControl($)
+    return 'Closed the Docker control pane.'
+  }
+  if (runtime.isActing) {
+    const { busy } = await read($, panel)
+    const text = `Wait for ${busy ?? 'the running docker action'} to finish.`
+    $.ui.toast(text)
+    return text
+  }
   runtime.isActing = true
-  await update($, panel, p => ({ ...p, busy: run.busy, error: null }))
+  await update($, panel, (p): Panel => ({
+    ...p,
+    busy: run.busy,
+    busyService: run.service ?? null,
+    busyVerb: run.verb ?? null,
+    error: null,
+  }))
   try {
     const result = await $.process.run(['docker', 'compose', ...run.args], {
       cwd: runtime.cwd,
@@ -253,7 +280,7 @@ async function perform($: EngineInterface, run: ActionRun): Promise<string> {
     return `docker compose ${run.args.join(' ')}: done`
   } finally {
     runtime.isActing = false
-    await update($, panel, p => ({ ...p, busy: null }))
+    await update($, panel, (p): Panel => ({ ...p, busy: null, busyService: null, busyVerb: null }))
     await refresh($)
   }
 }
@@ -265,7 +292,7 @@ async function setHidden($: EngineInterface, isHidden: boolean): Promise<string>
 }
 
 async function followLogs($: EngineInterface): Promise<void> {
-  if ((await read($, paneView)).expanded.length > 0 && (await isPaneOpen($))) await refreshCardLogs($)
+  if ((await read($, paneView)).expanded.length > 0 && (await isPaneUp($))) await refreshCardLogs($)
 }
 
 /** `/docker [status|up|down|restart|rebuild|logs] [svc]`. */
@@ -298,10 +325,14 @@ async function panelCommand($: EngineInterface, args: string): Promise<string> {
   )
 }
 
-/** Band buttons: Logs opens the pane, compose actions run off a timer. */
+/** Band and pane buttons: More/Less toggle the pane, compose actions run off a timer. */
 async function press($: EngineInterface, run: ActionRun): Promise<void> {
   if (run.kind === 'more') {
     await openControl($, run.service)
+    return
+  }
+  if (run.kind === 'less') {
+    await closeControl($)
     return
   }
   if (run.kind === 'ask') {
@@ -330,7 +361,9 @@ export const register: Register = on => {
       argumentHint: '[show|hide|use <dir>]',
     })
     const isHidden = (await $.store.get(HIDDEN_KEY).catch(() => false)) === true
-    await update($, panel, p => ({ ...p, isHidden }))
+    // A hot reload keeps an open pane up; read it back so the band says Less.
+    const isPaneOpen = await isPaneUp($)
+    await update($, panel, (p): Panel => ({ ...p, isHidden, isPaneOpen }))
     await refresh($)
     restartEvents($)
     void refreshStats($)
@@ -351,6 +384,13 @@ export const register: Register = on => {
       return { text: `docker-panel: /${name} ${e.args} failed: ${String(err)}` }
     }
     return next(e)
+  })
+
+  // The person closed the pane (its ×, Esc) or it went with an unload: More again.
+  on('ui.close', async ($, e, next) => {
+    const result = await next(e)
+    if (e.id === PANE_ID) await update($, panel, (p): Panel => ({ ...p, isPaneOpen: false }))
+    return result
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {

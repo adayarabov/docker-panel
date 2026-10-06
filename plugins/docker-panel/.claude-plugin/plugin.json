@@ -1,6 +1,6 @@
 {
   "name": "docker-panel",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Docker Compose status band above the Claude Code prompt: service health, ports, crash and stale-config alerts, one-press actions",
   "author": {
     "name": "SKFabric",

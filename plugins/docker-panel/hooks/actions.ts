@@ -3,10 +3,13 @@ import type { Service, Snapshot } from '../types'
 import { failureText, isFailing, isRunning, severityOf, staleServices } from './compose'
 
 export type ActionRun =
-  | { kind: 'compose'; args: string[]; busy: string }
+  /** `service` names the one service the action is about; absent for the whole stack. */
+  | { kind: 'compose'; args: string[]; busy: string; service?: string; verb?: string }
   | { kind: 'ask'; service: string }
   /** Opens the control pane, with `service`'s logs unfolded when one is named. */
   | { kind: 'more'; service: string | null }
+  /** Closes the control pane. */
+  | { kind: 'less' }
 
 export type Action = {
   key: string
@@ -19,17 +22,27 @@ export type Action = {
 const compose = (args: string[], busy: string): ActionRun => ({ kind: 'compose', args, busy })
 const up = (extra: string[], busy: string): ActionRun => compose(['up', '-d', ...extra], busy)
 
-const more = (service: string | null): Action => ({
-  key: 'more',
-  label: 'More',
-  hotkey: 'm',
-  isPrimary: false,
-  run: { kind: 'more', service },
+/** A compose action on one service: `verb` ("stopping") is what its card shows meanwhile. */
+const onService = (service: string, args: string[], verb: string): ActionRun => ({
+  kind: 'compose',
+  args: [...args, service],
+  busy: `${verb} ${service}`,
+  service,
+  verb,
 })
 
-/** The band's buttons: the one thing to do now, the stack-wide basics, and More. */
-export function actionsFor(snapshot: Snapshot): Action[] {
+export type BandContext = {
+  /** The control pane is open: More becomes Less and closes it. */
+  isPaneOpen: boolean
+}
+
+/** The band's buttons: the one thing to do now, the stack-wide basics, and More (or Less). */
+export function actionsFor(snapshot: Snapshot, context: BandContext = { isPaneOpen: false }): Action[] {
   const severity = severityOf(snapshot)
+  const more = (service: string | null): Action =>
+    context.isPaneOpen
+      ? { key: 'more', label: 'Less', hotkey: 'm', isPrimary: false, run: { kind: 'less' } }
+      : { key: 'more', label: 'More', hotkey: 'm', isPrimary: false, run: { kind: 'more', service } }
 
   if (severity === 'failing') {
     const failing = snapshot.services.find(isFailing)!.name
@@ -40,7 +53,7 @@ export function actionsFor(snapshot: Snapshot): Action[] {
         label: `Restart ${failing}`,
         hotkey: 'r',
         isPrimary: false,
-        run: compose(['restart', failing], `restarting ${failing}`),
+        run: onService(failing, ['restart'], 'restarting'),
       },
       more(failing),
     ]
@@ -48,8 +61,8 @@ export function actionsFor(snapshot: Snapshot): Action[] {
 
   if (severity === 'down') {
     return [
-      { key: 'up', label: 'Up', hotkey: 'u', isPrimary: true, run: up([], 'starting') },
-      { key: 'up-build', label: 'Up --build', hotkey: 'b', isPrimary: false, run: up(['--build'], 'building and starting') },
+      { key: 'up', label: '▶', hotkey: 'u', isPrimary: true, run: up([], 'starting') },
+      { key: 'up-build', label: '⚒', hotkey: 'b', isPrimary: false, run: up(['--build'], 'building and starting') },
       more(null),
     ]
   }
@@ -68,9 +81,11 @@ export function actionsFor(snapshot: Snapshot): Action[] {
     ]
   }
 
+  // Stack-wide Restart and Down as glyphs: the band's first row stays short. The
+  // control pane spells them out ("Restart all", "Down").
   return [
-    { key: 'restart', label: 'Restart', hotkey: 'r', isPrimary: false, run: compose(['restart'], 'restarting') },
-    { key: 'down', label: 'Down', hotkey: 'd', isPrimary: false, run: compose(['down'], 'stopping') },
+    { key: 'restart', label: '↻', hotkey: 'r', isPrimary: false, run: compose(['restart'], 'restarting') },
+    { key: 'down', label: '■', hotkey: 'd', isPrimary: false, run: compose(['down'], 'stopping') },
     more(null),
   ]
 }
@@ -84,21 +99,21 @@ export function serviceActions(service: Service): Action[] {
   }
   if (isRunning(service)) {
     actions.push(
-      { key: `stop-${name}`, label: 'Stop', isPrimary: false, run: compose(['stop', name], `stopping ${name}`) },
-      { key: `restart-${name}`, label: 'Restart', isPrimary: false, run: compose(['restart', name], `restarting ${name}`) },
+      { key: `stop-${name}`, label: 'Stop', isPrimary: false, run: onService(name, ['stop'], 'stopping') },
+      { key: `restart-${name}`, label: 'Restart', isPrimary: false, run: onService(name, ['restart'], 'restarting') },
     )
   } else {
-    actions.push({ key: `start-${name}`, label: 'Start', isPrimary: !isFailing(service), run: up([name], `starting ${name}`) })
+    actions.push({ key: `start-${name}`, label: 'Start', isPrimary: !isFailing(service), run: onService(name, ['up', '-d'], 'starting') })
   }
   if (service.hasBuild) {
     actions.push({
       key: `rebuild-${name}`,
       label: 'Rebuild',
       isPrimary: service.stale !== null,
-      run: up(['--build', name], `rebuilding ${name}`),
+      run: onService(name, ['up', '-d', '--build'], 'rebuilding'),
     })
   } else if (service.stale) {
-    actions.push({ key: `recreate-${name}`, label: 'Recreate', isPrimary: true, run: up([name], `recreating ${name}`) })
+    actions.push({ key: `recreate-${name}`, label: 'Recreate', isPrimary: true, run: onService(name, ['up', '-d'], 'recreating') })
   }
   return actions
 }
@@ -131,13 +146,13 @@ export function commandRun(args: string, snapshot: Snapshot | null): ActionRun |
     case 'up':
       return up(target, 'starting')
     case 'start':
-      return up(target, `starting ${service ?? ''}`.trim())
+      return service ? onService(service, ['up', '-d'], 'starting') : up([], 'starting')
     case 'stop':
-      return compose(['stop', ...target], `stopping ${service ?? ''}`.trim())
+      return service ? onService(service, ['stop'], 'stopping') : compose(['stop'], 'stopping')
     case 'rebuild':
       return up(['--build', ...(service ? target : snapshot ? staleServices(snapshot) : [])], 'rebuilding')
     case 'restart':
-      return compose(['restart', ...target], `restarting ${service ?? ''}`.trim())
+      return service ? onService(service, ['restart'], 'restarting') : compose(['restart'], 'restarting')
     case 'down':
       return compose(['down'], 'stopping')
     case 'logs':

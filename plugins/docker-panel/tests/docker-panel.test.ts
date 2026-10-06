@@ -27,7 +27,14 @@ const CONFIG = JSON.stringify({
   services: { web: {}, api: { build: { context: `${CWD}/api`, dockerfile: 'Dockerfile' } }, db: {} },
 })
 
-type World = { ps: string[]; hashes: Record<string, string>; restarts: number; isDaemonDown?: boolean }
+type World = {
+  ps: string[]
+  hashes: Record<string, string>
+  restarts: number
+  isDaemonDown?: boolean
+  /** While set, compose actions (stop, restart, up…) wait on it, so a test can look mid-action. */
+  actionGate?: Promise<void>
+}
 
 const DAEMON_DOWN =
   'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?'
@@ -67,6 +74,10 @@ function fakeDocker(on: On, world: { current: World }, ran: string[][]) {
       return ok(args.slice(3).map(id => `${id}ffff|${world.current.restarts}|sha256:img`).join('\n'))
     }
     if (args[0] === 'image') return ok('sha256:img|2026-10-01T00:00:00Z')
+    if (args[0] === 'compose' && ['stop', 'restart', 'up', 'down'].includes(args[1] ?? '')) {
+      await world.current.actionGate
+      return ok('')
+    }
     if (joined.startsWith('compose logs')) return ok('Error: password authentication failed for user "shop"')
     if (args[0] === 'stats') {
       return ok(
@@ -168,6 +179,21 @@ describe('snapshot derivation', () => {
     expect(failureText(api)).toBe('api was killed: out of memory')
   })
 
+  test('with nothing running the band offers ▶ up and ⚒ up --build', async () => {
+    const down = healthy()
+    down.ps = down.ps.map((_, i) =>
+      psLine({ id: `${i}`.repeat(12), service: ['web', 'api', 'db'][i]!, state: 'exited', exit: 0 }),
+    )
+    const snap = buildSnapshot(inputs(down))
+    expect(severityOf(snap)).toBe('down')
+    expect(actionsFor(snap).map(a => [a.label, a.hotkey])).toEqual([
+      ['▶', 'u'],
+      ['⚒', 'b'],
+      ['More', 'm'],
+    ])
+    expect(actionsFor(snap)[1]?.run).toEqual({ kind: 'compose', args: ['up', '-d', '--build'], busy: 'building and starting' })
+  })
+
   test('a crash is reported once, and again only when restarts grow', async () => {
     const before = buildSnapshot(inputs(healthy()))
     const crashed = healthy()
@@ -200,8 +226,9 @@ describe('band', () => {
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ plugin: 'docker-panel', surface, ...BAND })
       for (const name of ['web', 'api', 'db']) expect(await ui.find({ key: `chip-${name}` })).toBeDefined()
-      expect((await ui.find({ key: 'chip-web' }))?.text).toContain('3000')
-      expect((await ui.findAll({ type: 'Button' })).filter(b => b.key?.startsWith('act-')).map(b => b.props.label)).toEqual(['Restart', 'Down', 'More'])
+      // Ports live in the control pane's cards; the band's chips stay short.
+      expect((await ui.find({ key: 'chip-web' }))?.text).not.toContain('3000')
+      expect((await ui.findAll({ type: 'Button' })).filter(b => b.key?.startsWith('act-')).map(b => b.props.label)).toEqual(['↻', '■', 'More'])
       // The desktop frames the band itself; only the terminal draws a border.
       const root = await ui.drawn()
       expect((root as { props?: Record<string, unknown> }).props?.borderStyle).toBe(surface === 'terminal' ? 'round' : undefined)
@@ -245,7 +272,7 @@ describe('band', () => {
     await ui.press({ key: 'act-restart' })
     await clock.settle()
     expect(ran.some(args => args.join(' ') === 'compose restart api')).toBe(true)
-    expect((await ui.findAll({ type: 'Button' })).filter(b => b.key?.startsWith('act-')).map(b => b.props.label)).toEqual(['Restart', 'Down', 'More'])
+    expect((await ui.findAll({ type: 'Button' })).filter(b => b.key?.startsWith('act-')).map(b => b.props.label)).toEqual(['↻', '■', 'More'])
   })
 
   test('the desktop × hides the band; the terminal leaves that to its own [-]', async ($, on) => {
@@ -351,6 +378,7 @@ describe('band', () => {
         props: {} as never,
       })
       for (const name of ['web', 'api', 'db']) expect(await pane.find({ key: `card-${name}` })).toBeDefined()
+      expect((await pane.find({ key: 'card-web' }))?.text).toContain('localhost:3000')
       expect(await pane.find({ key: 'stop-api' })).toBeDefined()
       expect(await pane.find({ key: 'rebuild-api' })).toBeDefined()
       expect(await pane.find({ key: 'rebuild-web' })).toBeUndefined()
@@ -399,6 +427,55 @@ describe('band', () => {
       props: {} as never,
     })
     expect(await pane.find({ type: 'Text', text: /Cannot connect/ })).toBeUndefined()
+  })
+
+  test('a card being stopped says so, on its own card and chip only', async ($, on) => {
+    const clock = mock.clock(on)
+    let release = () => {}
+    const world: { current: World } = { current: { ...healthy(), actionGate: new Promise(r => (release = r)) } }
+    fakeDocker(on, world, [])
+    on('ui.open', async () => ({ value: { isPlaced: true } }))
+    await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+    const band = await $.ui.mount({ plugin: 'docker-panel', surface: 'terminal', ...BAND })
+    const pane = await $.ui.mount({
+      plugin: 'docker-panel',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'docker-control',
+      props: {} as never,
+    })
+
+    await pane.press({ key: 'stop-web' })
+    await clock.settle()
+    expect((await pane.find({ key: 'card-web' }))?.text).toContain('stopping…')
+    expect(await pane.find({ key: 'stop-web' })).toBeUndefined()
+    expect((await pane.find({ key: 'card-api' }))?.text).not.toContain('stopping…')
+    expect((await band.find({ key: 'chip-web' }))?.text).toContain('stopping…')
+
+    release()
+    await clock.settle()
+    expect((await pane.find({ key: 'card-web' }))?.text).not.toContain('stopping…')
+  })
+
+  test('More becomes Less while the pane is open, and Less closes it', async ($, on) => {
+    mock.clock(on)
+    fakeDocker(on, { current: healthy() }, [])
+    const closed: string[] = []
+    on('ui.open', async () => ({ value: { isPlaced: true } }))
+    on('ui.close', async (_$, e) => {
+      closed.push(e.id)
+      return { value: undefined }
+    })
+    await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+    const band = await $.ui.mount({ plugin: 'docker-panel', surface: 'desktop', ...BAND })
+    const label = async () => (await band.find({ key: 'act-more' }))?.props.label
+
+    expect(await label()).toBe('More')
+    await band.press({ key: 'act-more' })
+    expect(await label()).toBe('Less')
+    await band.press({ key: 'act-more' })
+    expect(closed).toEqual(['docker-control'])
+    expect(await label()).toBe('More')
   })
 
   test('stays out of the way without a compose file', async ($, on) => {

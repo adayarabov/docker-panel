@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-06
+
+### Added
+
+- A service with an action running on it says so: its card and chip show `◐ stopping…` (or restarting, starting, rebuilding, recreating) in place of its status, and the card's buttons wait until it is done.
+- Pressing an action while another runs now says to wait, instead of doing nothing.
+
+### Changed
+
+- Colours follow Docker: Docker blue for the brand mark and accents, neutral grey chips and frames, and status colours tuned to sit beside the blue.
+- In the terminal, each card in the control pane names its service with the same chip as the band.
+- The band's chips no longer list published ports; the control pane's cards link them.
+- A stopped service's name is dimmed in its control-pane card, as on its chip.
+- **More** reads **Less** while the control pane is open and closes it; closing the pane any other way turns it back.
+- The band's stack-wide buttons are glyphs: `↻` Restart and `■` Down while it runs, `▶` Up and `⚒` Up --build while it is down (hotkeys `r`, `d`, `u`, `b` as before).
+
+### Fixed
+
+- In a narrow control pane a service's name broke into one letter per row and its usage into several rows; the name's chip no longer shrinks, the status truncates and usage moves whole onto the next row.
+
 ## [0.2.1] - 2026-10-06
 
 ### Changed
@@ -49,7 +69,8 @@ All notable changes to this project are documented here. The format follows
 - `/docker` command for status and actions, `/docker-panel show|hide` and a corner × to hide the band.
 - `examples/shop-demo` seven-service demo stack.
 
-[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/SKFabric/docker-panel/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/SKFabric/docker-panel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SKFabric/docker-panel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SKFabric/docker-panel/releases/tag/v0.1.0

@@ -59,12 +59,18 @@ export type Panel = {
   stats: Stats | null
   /** What an action in flight is doing, e.g. "restarting api". */
   busy: string | null
+  /** The one service that action is about, so its card and chip can say so; null for the whole stack. */
+  busyService: string | null
+  /** The action's verb for that service's card, e.g. "stopping". */
+  busyVerb: string | null
   /** The last action's failure, shown until the next action. */
   error: string | null
   /** Why docker is unreachable while `availability` is `no-daemon`; cleared once it answers again. */
   daemonError: string | null
   /** Hidden with `/docker-panel hide`; kept across sessions in the plugin's store. */
   isHidden: boolean
+  /** Whether the control pane is open, so the band's More reads Less and closes it. */
+  isPaneOpen: boolean
 }
 
 /** The control pane's own state: which service cards show their logs, and those logs. */

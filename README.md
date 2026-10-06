@@ -1,6 +1,6 @@
 # docker-panel
 
-A [Claude Code](https://claude.com/claude-code) mod that keeps your Docker Compose project in sight: a status band above the prompt with every service's health and ports, alerts when a container crashes or runs on stale config, and one-press actions — including handing a crash straight to Claude.
+A [Claude Code](https://claude.com/claude-code) mod that keeps your Docker Compose project in sight: a status band above the prompt with every service's health, a control pane for each container, alerts when a container crashes or runs on stale config, and one-press actions — including handing a crash straight to Claude.
 
 Works in the terminal and in the desktop app's Code tab.
 
@@ -12,12 +12,12 @@ Works in the terminal and in the desktop app's Code tab.
 
 ## Features
 
-- **Live status** — row one sums up the project: how many services are up, total CPU and RAM, the current problem and the actions. Row two has one chip per Compose service: running, healthy, starting, unhealthy, exited with code, restart count. Published ports link to `http://localhost:<port>`.
-- **Control pane** — **More** opens a pane beside the transcript with stack-wide actions and a card per service: state, image, ports, CPU and memory, its own Start / Stop / Restart / Rebuild buttons and its logs on demand. It scrolls when there are many services.
+- **Live status** — row one sums up the project: how many services are up, total CPU and RAM, the current problem and the actions. Row two has one chip per Compose service: running, healthy, starting, unhealthy, stopped, exited with code, restart count, and what an action on it is doing right now.
+- **Control pane** — **More** opens a pane beside the transcript with stack-wide actions and a card per service: state, image, published ports as `localhost` links, CPU and memory, its own Start / Stop / Restart / Rebuild buttons and its logs on demand. While an action runs on a service, its card and chip say so (`◐ stopping…`). The pane scrolls when there are many services and keeps names whole when it is narrow.
 - **Event-driven** — follows `docker compose events`, with a 15-second fallback poll. No compose file in the session directory, no band.
 - **Crash alerts** — a toast when a service exits non-zero, crash-loops or turns unhealthy. **Ask Claude** puts the failure and its logs into the prompt.
 - **Stale config detection** — compares each running container's compose config hash with the current file, and the image build time with the Dockerfile. **Rebuild & up** rebuilds just the stale services.
-- **Context-aware actions** — Up / Up --build when nothing runs; Logs / Restart / Down when healthy; Ask Claude / Logs / Restart for the failing service.
+- **Context-aware actions** — `▶` Up / `⚒` Up --build when nothing runs; `↻` Restart / `■` Down when healthy; Ask Claude / Restart for the failing service. **More** opens the control pane and reads **Less** while it is open.
 
 ## Requirements
 

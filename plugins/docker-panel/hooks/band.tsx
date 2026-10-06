@@ -11,14 +11,22 @@ import { formatUsage, isFailing, isRunning, severityOf, upSummary } from './comp
 
 export type Els = Elements[RenderSurface]
 
+/**
+ * Docker blue for the brand mark and accents, neutral grey for chips and frames
+ * so the colour stays on what matters. Docker's brand defines no status colours,
+ * so green, amber and red stay semantic, toned to sit beside the blue.
+ */
 export const COLOR = {
-  ok: '#5ccf8a',
-  warn: '#e8b64c',
-  bad: '#f07070',
-  idle: '#7b8290',
-  accent: '#6ea2ff',
+  ok: '#3ec48a',
+  warn: '#f4b740',
+  bad: '#f05d5e',
+  idle: '#7a8ba8',
+  accent: '#2496ed',
   frame: '#4a505c',
+  cardFrame: '#4a505c',
   chip: '#262a33',
+  /** Text on a chip: a soft grey in the chip's own tone rather than plain white. */
+  chipText: '#d6d9df',
 }
 
 const GLYPH: Record<ServiceStatus, string> = {
@@ -59,27 +67,29 @@ function chipDetail(service: Service): string | null {
   return null
 }
 
-function Chip(els: Els, surface: RenderSurface, service: Service) {
-  const { Box, Text, Link } = els
+/** The verb of an action running on this one service ("stopping"), or null. */
+export function pendingVerb(panel: Panel, service: Service): string | null {
+  return panel.busyService === service.name ? panel.busyVerb : null
+}
+
+function Chip(els: Els, surface: RenderSurface, service: Service, pending: string | null) {
+  const { Box, Text } = els
   const isTerminal = surface === 'terminal'
-  const detail = chipDetail(service)
+  const detail = pending ? `${pending}…` : chipDetail(service)
+  const color = pending ? COLOR.warn : statusColor(service)
   return (
     <Box
       key={`chip-${service.name}`}
       flexDirection="row"
+      flexShrink={0}
       paddingX={isTerminal ? 1 : 0}
       backgroundColor={isTerminal ? COLOR.chip : undefined}
     >
-      <Text color={statusColor(service)}>{glyphOf(service)} </Text>
-      <Text dimColor={!isFailing(service) && !isRunning(service)}>
+      <Text color={color}>{pending ? '◐' : glyphOf(service)} </Text>
+      <Text color={isTerminal ? COLOR.chipText : undefined} dimColor={!isFailing(service) && !isRunning(service)}>
         {service.name}
       </Text>
-      {service.ports.map(port => (
-        <Text dimColor>
-          :<Link href={`http://localhost:${port}`}>{String(port)}</Link>
-        </Text>
-      ))}
-      {detail && <Text color={statusColor(service)}> {detail}</Text>}
+      {detail && <Text color={color}> {detail}</Text>}
     </Box>
   )
 }
@@ -165,13 +175,15 @@ export function drawBand(els: Els, surface: RenderSurface, panel: Panel, handler
           {panel.busy ? (
             <Text color={COLOR.accent}>… {panel.busy}</Text>
           ) : (
-            actionsFor(snapshot).map(action => ActionButton(els, action, handlers.onAction))
+            actionsFor(snapshot, { isPaneOpen: panel.isPaneOpen }).map(action =>
+              ActionButton(els, action, handlers.onAction),
+            )
           )}
           {CloseButton(els, surface, handlers.onClose)}
         </Box>
       </Box>
       <Box key="services" flexDirection="row" flexWrap="wrap" columnGap={isTerminal ? 1 : 2}>
-        {snapshot.services.map(service => Chip(els, surface, service))}
+        {snapshot.services.map(service => Chip(els, surface, service, pendingVerb(panel, service)))}
       </Box>
     </Box>
   )

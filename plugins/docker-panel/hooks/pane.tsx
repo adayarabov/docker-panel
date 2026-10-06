@@ -7,7 +7,7 @@ import type { PaneView, Panel, Service, Stats } from '../types'
 import type { Action } from './actions'
 import { serviceActions } from './actions'
 import type { Els } from './band'
-import { COLOR, ERROR_LINE, glyphOf, statusColor } from './band'
+import { COLOR, ERROR_LINE, glyphOf, pendingVerb, statusColor } from './band'
 import { formatUsage, isFailing, isRunning, upSummary } from './compose'
 
 export const PANE_ID = 'docker-control'
@@ -46,10 +46,18 @@ function ActionButtons(els: Els, actions: Action[], onAction: (action: Action) =
 function cardColor(service: Service): string {
   if (isFailing(service)) return COLOR.bad
   if (service.stale) return COLOR.warn
-  return COLOR.frame
+  return COLOR.cardFrame
 }
 
-function Card(els: Els, service: Service, stats: Stats | null, view: PaneView, handlers: PaneHandlers) {
+function Card(
+  els: Els,
+  surface: RenderSurface,
+  service: Service,
+  pending: string | null,
+  stats: Stats | null,
+  view: PaneView,
+  handlers: PaneHandlers,
+) {
   const { Box, Text, Button, Link } = els
   // A stopped container's last sample (0%, a few KB) says nothing; show usage only while it runs.
   const usage = isRunning(service) ? stats?.byService[service.name] : undefined
@@ -62,16 +70,51 @@ function Card(els: Els, service: Service, stats: Stats | null, view: PaneView, h
   ].filter(Boolean)
 
   return (
-    <Box key={`card-${service.name}`} flexDirection="column" borderStyle="round" borderColor={cardColor(service)} paddingX={1}>
-      <Box flexDirection="row" flexWrap="nowrap" justifyContent="space-between" columnGap={2}>
+    <Box
+      key={`card-${service.name}`}
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={pending ? COLOR.warn : cardColor(service)}
+      paddingX={1}
+    >
+      {/* Narrow panes: the chip never squeezes (no letter-per-row names), the status
+          truncates, and usage drops whole onto the next row instead of breaking up. */}
+      <Box flexDirection="row" flexWrap="wrap" justifyContent="space-between" columnGap={2}>
         <Box flexDirection="row" flexShrink={1} minWidth={0} columnGap={1}>
-          <Text color={statusColor(service)}>{glyphOf(service)}</Text>
-          <Text bold>{service.name}</Text>
-          <Text dimColor={!isFailing(service)} color={isFailing(service) ? COLOR.bad : undefined} wrap="truncate-end">
-            {service.statusText}
-          </Text>
+          {/* The same chip as on the band: glyph and name on the grey ground (terminal only, as there). */}
+          <Box
+            key={`card-chip-${service.name}`}
+            flexDirection="row"
+            flexShrink={0}
+            paddingX={surface === 'terminal' ? 1 : 0}
+            backgroundColor={surface === 'terminal' ? COLOR.chip : undefined}
+          >
+            <Text color={pending ? COLOR.warn : statusColor(service)}>{pending ? '◐' : glyphOf(service)} </Text>
+            <Text
+              bold
+              color={surface === 'terminal' ? COLOR.chipText : undefined}
+              dimColor={!pending && !isFailing(service) && !isRunning(service)}
+            >
+              {service.name}
+            </Text>
+          </Box>
+          {pending ? (
+            <Text color={COLOR.warn} wrap="truncate-end">
+              {pending}…
+            </Text>
+          ) : (
+            <Text dimColor={!isFailing(service)} color={isFailing(service) ? COLOR.bad : undefined} wrap="truncate-end">
+              {service.statusText}
+            </Text>
+          )}
         </Box>
-        {usage && <Text dimColor>{formatUsage(usage)}</Text>}
+        {usage && (
+          <Box flexShrink={0}>
+            <Text dimColor wrap="truncate-end">
+              {formatUsage(usage)}
+            </Text>
+          </Box>
+        )}
       </Box>
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         {service.image && <Text dimColor>{service.image}</Text>}
@@ -81,7 +124,11 @@ function Card(els: Els, service: Service, stats: Stats | null, view: PaneView, h
         {notes.length > 0 && <Text color={isFailing(service) ? COLOR.bad : COLOR.warn}>{notes.join(' · ')}</Text>}
       </Box>
       <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-        {ActionButtons(els, serviceActions(service), handlers.onAction)}
+        {pending ? (
+          <Text color={COLOR.warn}>… {pending}</Text>
+        ) : (
+          ActionButtons(els, serviceActions(service), handlers.onAction)
+        )}
         <Button
           key={`logs-${service.name}`}
           label={isOpen ? 'Hide logs' : 'Logs'}
@@ -131,7 +178,9 @@ export function drawPane(els: Els, surface: RenderSurface, panel: Panel, view: P
           )}
         </Box>
       </Box>
-      {snapshot.services.map(service => Card(els, service, panel.stats, view, handlers))}
+      {snapshot.services.map(service =>
+        Card(els, surface, service, pendingVerb(panel, service), panel.stats, view, handlers),
+      )}
     </Box>
   )
 }
