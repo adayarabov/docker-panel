@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Tests follow the layout of Claude Code's built-in mods: one file per `hooks/` module (`compose`, `actions`, `docker`, `band`, `pane`, `register`), each declaring its tier and one `describe`, with shared fixtures under `tests/fixtures/`, one export a file. New tests cover card actions, `/docker` argument parsing and the More/Less labels.
+- The plugin folder carries its own README, as the built-in mods do.
+- CI type-checks the plugin against the declarations the engine lays beside it, before running the tests.
+
 ## [0.2.2] - 2026-10-06
 
 ### Added

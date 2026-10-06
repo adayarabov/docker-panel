@@ -82,7 +82,10 @@ The plugin lives in [`plugins/docker-panel`](plugins/docker-panel). Opening Clau
 ```bash
 claude plugin validate plugins/docker-panel
 claude plugin test plugins/docker-panel
+tsc -p plugins/docker-panel   # after Claude Code has loaded the plugin once
 ```
+
+How the mod works inside, its tests and its layout are described in [plugins/docker-panel/README.md](plugins/docker-panel/README.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

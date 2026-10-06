@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   plugin:
-    name: Validate and test
+    name: Validate, type-check and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +19,27 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+      - name: Install Claude Code and TypeScript
+        run: npm install -g @anthropic-ai/claude-code typescript@5
 
       - name: Validate marketplace
         run: claude plugin validate .
 
       - name: Validate plugin
         run: claude plugin validate plugins/docker-panel
+
+      # Loading the plugin lays the engine's declarations beside it
+      # (.claude-plugin/types/ and a tsconfig.json that extends them). No login
+      # is needed for that; the prompt itself fails without one, so its exit
+      # status is ignored and the files are checked instead.
+      - name: Lay the engine's type declarations
+        run: |
+          claude --plugin-dir plugins/docker-panel -p "/plugin-types" || true
+          test -f plugins/docker-panel/.claude-plugin/types/claude-code/index.d.ts
+          test -f plugins/docker-panel/tsconfig.json
+
+      - name: Type-check
+        run: tsc -p plugins/docker-panel
 
       - name: Test plugin
         run: claude plugin test plugins/docker-panel
