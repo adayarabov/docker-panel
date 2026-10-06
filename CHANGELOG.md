@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-06
+
 ### Changed
 
 - Tests follow the layout of Claude Code's built-in mods: one file per `hooks/` module (`compose`, `actions`, `docker`, `band`, `pane`, `register`), each declaring its tier and one `describe`, with shared fixtures under `tests/fixtures/`, one export a file. New tests cover card actions, `/docker` argument parsing and the More/Less labels.
@@ -75,7 +77,8 @@ All notable changes to this project are documented here. The format follows
 - `/docker` command for status and actions, `/docker-panel show|hide` and a corner × to hide the band.
 - `examples/shop-demo` seven-service demo stack.
 
-[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/SKFabric/docker-panel/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/SKFabric/docker-panel/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/SKFabric/docker-panel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SKFabric/docker-panel/compare/v0.1.0...v0.2.0
