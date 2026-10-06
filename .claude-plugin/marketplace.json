@@ -12,7 +12,7 @@
       "name": "docker-panel",
       "source": "./plugins/docker-panel",
       "description": "Docker Compose status band above the Claude Code prompt: service health, ports, crash and stale-config alerts, one-press actions",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "category": "development",
       "keywords": ["docker", "docker-compose", "devops"]
     }

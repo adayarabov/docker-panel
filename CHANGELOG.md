@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-06
+
+### Changed
+
+- The terminal band no longer draws its own ×: Claude Code's `[-]` already collapses every band there, and `/docker-panel hide` hides it for good. The desktop keeps the ×.
+
+### Fixed
+
+- "Cannot connect to the Docker daemon" stayed on the band and in the control pane after the daemon came back. The daemon's error now has its own field, cleared by the first successful refresh.
+- Stopping a container showed it as crashed: `docker stop` ends a process that ignores SIGTERM with SIGKILL, exit code 137. Exit codes 130, 137 and 143 now read as **stopped** unless Docker reports the out-of-memory killer, which shows as "killed: out of memory".
+- Stopped containers no longer show a stale CPU and memory sample in the control pane.
+
 ## [0.2.0] - 2026-10-06
 
 ### Added
@@ -37,6 +49,7 @@ All notable changes to this project are documented here. The format follows
 - `/docker` command for status and actions, `/docker-panel show|hide` and a corner × to hide the band.
 - `examples/shop-demo` seven-service demo stack.
 
-[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/SKFabric/docker-panel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SKFabric/docker-panel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SKFabric/docker-panel/releases/tag/v0.1.0

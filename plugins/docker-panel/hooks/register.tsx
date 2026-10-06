@@ -5,7 +5,7 @@ import type { PaneView, Panel, Snapshot } from '../types'
 import type { ActionRun } from './actions'
 import { askPrompt, commandRun } from './actions'
 import { drawBand } from './band'
-import { failureText, isFailing, isRelevantEvent, newFailures, parseStats } from './compose'
+import { failureText, isFailing, isRelevantEvent, isRunning, newFailures, parseStats } from './compose'
 import type { Host } from './docker'
 import { collect, findComposeFile, lastLine, logTail, projectDirKey, resolveProjectDir } from './docker'
 import { CARD_LOG_LINES, PANE_ID, drawPane } from './pane'
@@ -16,6 +16,7 @@ const INITIAL: Panel = {
   stats: null,
   busy: null,
   error: null,
+  daemonError: null,
   isHidden: false,
 }
 const HIDDEN_KEY = 'isHidden'
@@ -90,9 +91,16 @@ async function refresh($: EngineInterface): Promise<void> {
         availability: 'ok',
         snapshot: result.snapshot,
         busy: runtime.isActing ? p.busy : null,
+        daemonError: null,
       }))
     } else if (result.kind === 'no-daemon') {
-      await update($, panel, (p): Panel => ({ ...p, availability: 'no-daemon', snapshot: null, error: result.reason }))
+      await update($, panel, (p): Panel => ({
+        ...p,
+        availability: 'no-daemon',
+        snapshot: null,
+        stats: null,
+        daemonError: result.reason,
+      }))
     } else {
       await update($, panel, p => ({ ...INITIAL, isHidden: p.isHidden }))
     }
@@ -110,7 +118,7 @@ async function refresh($: EngineInterface): Promise<void> {
 async function refreshStats($: EngineInterface): Promise<void> {
   try {
     const snapshot = (await read($, panel)).snapshot
-    const ids = snapshot?.services.flatMap(s => (s.status === 'exited' || s.status === 'absent' ? [] : s.containerIds))
+    const ids = snapshot?.services.flatMap(s => (isRunning(s) ? s.containerIds : []))
     if (!snapshot || !ids?.length) {
       await update($, panel, (p): Panel => ({ ...p, stats: null }))
       return

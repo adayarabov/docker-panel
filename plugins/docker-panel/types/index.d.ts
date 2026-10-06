@@ -5,6 +5,8 @@ export type ServiceStatus =
   | 'restarting'
   | 'unhealthy'
   | 'exited'
+  /** Exited by a stop signal (SIGTERM, SIGINT, or SIGKILL after the stop timeout), not by the OOM killer. */
+  | 'stopped'
   | 'created'
   | 'paused'
   | 'absent'
@@ -57,8 +59,10 @@ export type Panel = {
   stats: Stats | null
   /** What an action in flight is doing, e.g. "restarting api". */
   busy: string | null
-  /** The last action's failure, shown until the next action or refresh. */
+  /** The last action's failure, shown until the next action. */
   error: string | null
+  /** Why docker is unreachable while `availability` is `no-daemon`; cleared once it answers again. */
+  daemonError: string | null
   /** Hidden with `/docker-panel hide`; kept across sessions in the plugin's store. */
   isHidden: boolean
 }

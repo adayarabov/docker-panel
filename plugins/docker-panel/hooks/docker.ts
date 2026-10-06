@@ -6,6 +6,7 @@ import type { ProcessRunResult } from 'claude-code'
 import type { Snapshot } from '../types'
 import {
   COMPOSE_FILES,
+  INSPECT_FORMAT,
   buildSnapshot,
   isFailingState,
   parseConfig,
@@ -58,7 +59,7 @@ export async function collect(host: Host): Promise<Collected> {
   const rows = parsePs(psOut.stdout)
   const facts = rows.length
     ? parseInspect(
-        (await host.docker(['inspect', '--format', '{{.Id}}|{{.RestartCount}}|{{.Image}}', ...rows.map(r => r.id)]))
+        (await host.docker(['inspect', '--format', INSPECT_FORMAT, ...rows.map(r => r.id)]))
           .stdout,
       )
     : {}
@@ -75,7 +76,11 @@ export async function collect(host: Host): Promise<Collected> {
     if (mtime !== undefined) dockerfileMtimeMs[service.buildDockerfile] = mtime
   }
 
-  const failing = [...new Set(rows.filter(r => isFailingState(statusOf(r), r.exitCode)).map(r => r.service))]
+  const failing = [
+    ...new Set(
+      rows.filter(r => isFailingState(statusOf(r, facts[r.id]?.isOomKilled), r.exitCode)).map(r => r.service),
+    ),
+  ]
   const logTails: Record<string, string[]> = {}
   await Promise.all(
     failing.map(async name => {

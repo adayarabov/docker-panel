@@ -21,7 +21,14 @@ export type PsRow = {
   image: string
 }
 
-export type ContainerFacts = { restarts: number; imageId: string }
+export type ContainerFacts = { restarts: number; imageId: string; isOomKilled: boolean }
+
+/**
+ * Exit codes of a process ended by a stop signal: 128 + SIGINT, SIGKILL, SIGTERM.
+ * `docker stop` sends SIGTERM and, after its timeout, SIGKILL, so 137 is usually a
+ * stop too; only the OOM killer's SIGKILL is a crash, and inspect says which.
+ */
+const STOP_EXIT_CODES = new Set([130, 137, 143])
 
 export type Inputs = {
   config: ComposeConfig
@@ -90,12 +97,16 @@ function toPsRow(item: Record<string, unknown>): PsRow {
   }
 }
 
-/** `docker inspect --format '{{.Id}}|{{.RestartCount}}|{{.Image}}'`, keyed by the short id ps prints. */
+export const INSPECT_FORMAT = '{{.Id}}|{{.RestartCount}}|{{.Image}}|{{.State.OOMKilled}}'
+
+/** `docker inspect --format INSPECT_FORMAT`, keyed by the short id ps prints. */
 export function parseInspect(text: string): Record<string, ContainerFacts> {
   const out: Record<string, ContainerFacts> = {}
   for (const line of text.split('\n')) {
-    const [id, restarts, imageId] = line.trim().split('|')
-    if (id && imageId) out[id.slice(0, 12)] = { restarts: Number(restarts) || 0, imageId }
+    const [id, restarts, imageId, oom] = line.trim().split('|')
+    if (id && imageId) {
+      out[id.slice(0, 12)] = { restarts: Number(restarts) || 0, imageId, isOomKilled: oom === 'true' }
+    }
   }
   return out
 }
@@ -120,8 +131,9 @@ export function isRelevantEvent(line: string): boolean {
   }
 }
 
-export function statusOf(row: PsRow | undefined): ServiceStatus {
+export function statusOf(row: PsRow | undefined, isOomKilled = false): ServiceStatus {
   if (!row) return 'absent'
+  if (row.state === 'exited' && STOP_EXIT_CODES.has(row.exitCode) && !isOomKilled) return 'stopped'
   if (row.state === 'running') {
     if (row.health === 'healthy') return 'healthy'
     if (row.health === 'unhealthy') return 'unhealthy'
@@ -149,10 +161,11 @@ export function buildSnapshot(inputs: Inputs): Snapshot {
   const services: Service[] = inputs.config.services.map(service => {
     // Several replicas collapse into the worst one, which is the one worth showing.
     const rows = inputs.rows.filter(r => r.service === service.name)
-    const row = rows.sort((a, b) => SEVERITY[statusOf(b)] - SEVERITY[statusOf(a)])[0]
+    const status = (r: PsRow | undefined) => statusOf(r, r ? inputs.facts[r.id]?.isOomKilled : false)
+    const row = rows.sort((a, b) => SEVERITY[status(b)] - SEVERITY[status(a)])[0]
     return {
       name: service.name,
-      status: statusOf(row),
+      status: status(row),
       statusText: row?.statusText ?? 'not created',
       exitCode: row?.exitCode ?? 0,
       restarts: row ? (inputs.facts[row.id]?.restarts ?? 0) : 0,
@@ -173,6 +186,7 @@ const SEVERITY: Record<ServiceStatus, number> = {
   paused: 1,
   created: 1,
   absent: 1,
+  stopped: 1,
   starting: 2,
   restarting: 4,
   unhealthy: 4,
@@ -189,7 +203,7 @@ export function isFailing(service: Service): boolean {
 }
 
 export function isDown(snapshot: Snapshot): boolean {
-  return snapshot.services.every(s => s.status === 'absent' || s.status === 'exited' || s.status === 'created')
+  return snapshot.services.every(s => ['absent', 'exited', 'stopped', 'created'].includes(s.status))
 }
 
 export type Severity = 'ok' | 'stale' | 'failing' | 'down'
@@ -219,6 +233,8 @@ export function failureText(service: Service): string {
   const restarts = service.restarts > 0 ? `, ${service.restarts} restarts` : ''
   if (service.status === 'unhealthy') return `${service.name} is unhealthy${restarts}`
   if (service.status === 'restarting') return `${service.name} is crash-looping (exit ${service.exitCode}${restarts})`
+  // An `exited` 137 is only left once a stop's SIGKILL has become `stopped`: the OOM killer's.
+  if (service.exitCode === 137) return `${service.name} was killed: out of memory${restarts}`
   return `${service.name} exited with code ${service.exitCode}${restarts}`
 }
 
@@ -278,9 +294,14 @@ export function formatUsage(usage: Usage): string {
   return `CPU ${usage.cpuPercent.toFixed(usage.cpuPercent < 10 ? 1 : 0)}% · RAM ${formatBytes(usage.memBytes)}`
 }
 
+/** A container is up, whatever its health, or restarting. */
+export function isRunning(service: Service): boolean {
+  return ['healthy', 'running', 'starting', 'unhealthy', 'restarting'].includes(service.status)
+}
+
 /** "5/7 up": containers running (any health) out of the services the file declares. */
 export function upSummary(snapshot: Snapshot): string {
-  const up = snapshot.services.filter(s => ['healthy', 'running', 'starting', 'unhealthy'].includes(s.status))
+  const up = snapshot.services.filter(s => isRunning(s) && s.status !== 'restarting')
   return `${up.length}/${snapshot.services.length} up`
 }
 

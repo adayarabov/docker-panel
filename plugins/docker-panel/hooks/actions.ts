@@ -1,6 +1,6 @@
 // Which buttons the band and the control pane offer, and what each one does.
 import type { Service, Snapshot } from '../types'
-import { failureText, isFailing, severityOf, staleServices } from './compose'
+import { failureText, isFailing, isRunning, severityOf, staleServices } from './compose'
 
 export type ActionRun =
   | { kind: 'compose'; args: string[]; busy: string }
@@ -74,9 +74,6 @@ export function actionsFor(snapshot: Snapshot): Action[] {
     more(null),
   ]
 }
-
-const isRunning = (service: Service): boolean =>
-  ['healthy', 'running', 'starting', 'unhealthy', 'restarting'].includes(service.status)
 
 /** One service card's buttons in the control pane. Logs is the pane's own toggle, not listed here. */
 export function serviceActions(service: Service): Action[] {

@@ -7,7 +7,7 @@ import type { Elements, RenderSurface } from 'claude-code'
 import type { Panel, Service, ServiceStatus, Stats } from '../types'
 import type { Action } from './actions'
 import { actionsFor, noteFor } from './actions'
-import { formatUsage, isFailing, severityOf, upSummary } from './compose'
+import { formatUsage, isFailing, isRunning, severityOf, upSummary } from './compose'
 
 export type Els = Elements[RenderSurface]
 
@@ -28,6 +28,7 @@ const GLYPH: Record<ServiceStatus, string> = {
   restarting: '✕',
   unhealthy: '✕',
   exited: '○',
+  stopped: '○',
   created: '○',
   paused: '◌',
   absent: '○',
@@ -70,7 +71,7 @@ function Chip(els: Els, surface: RenderSurface, service: Service) {
       backgroundColor={isTerminal ? COLOR.chip : undefined}
     >
       <Text color={statusColor(service)}>{glyphOf(service)} </Text>
-      <Text dimColor={!isFailing(service) && (service.status === 'absent' || service.status === 'exited')}>
+      <Text dimColor={!isFailing(service) && !isRunning(service)}>
         {service.name}
       </Text>
       {service.ports.map(port => (
@@ -102,7 +103,12 @@ export type BandHandlers = {
   onClose: () => void
 }
 
-function CloseButton(els: Els, onClose: () => void) {
+/**
+ * The desktop's ×. The terminal draws its own `[-]` collapse mark on every band,
+ * so a second control there would only crowd it; `/docker-panel hide` remains.
+ */
+function CloseButton(els: Els, surface: RenderSurface, onClose: () => void) {
+  if (surface === 'terminal') return null
   const { Button } = els
   return <Button key="close" label="×" plain role="dismiss" dimColor onPress={onClose} />
 }
@@ -125,9 +131,9 @@ export function drawBand(els: Els, surface: RenderSurface, panel: Panel, handler
       <Box flexDirection="row" flexWrap="nowrap" justifyContent="space-between" {...frameProps(surface, COLOR.frame)}>
         <Box flexDirection="row">
           <Text color={COLOR.accent}>⬢ docker </Text>
-          <Text dimColor>{panel.error ?? 'daemon is not reachable'}</Text>
+          <Text dimColor>{panel.daemonError ?? 'daemon is not reachable'}</Text>
         </Box>
-        {CloseButton(els, handlers.onClose)}
+        {CloseButton(els, surface, handlers.onClose)}
       </Box>
     )
   }
@@ -161,7 +167,7 @@ export function drawBand(els: Els, surface: RenderSurface, panel: Panel, handler
           ) : (
             actionsFor(snapshot).map(action => ActionButton(els, action, handlers.onAction))
           )}
-          {CloseButton(els, handlers.onClose)}
+          {CloseButton(els, surface, handlers.onClose)}
         </Box>
       </Box>
       <Box key="services" flexDirection="row" flexWrap="wrap" columnGap={isTerminal ? 1 : 2}>

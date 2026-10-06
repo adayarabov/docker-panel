@@ -8,7 +8,7 @@ import type { Action } from './actions'
 import { serviceActions } from './actions'
 import type { Els } from './band'
 import { COLOR, ERROR_LINE, glyphOf, statusColor } from './band'
-import { formatUsage, isFailing, upSummary } from './compose'
+import { formatUsage, isFailing, isRunning, upSummary } from './compose'
 
 export const PANE_ID = 'docker-control'
 
@@ -51,7 +51,8 @@ function cardColor(service: Service): string {
 
 function Card(els: Els, service: Service, stats: Stats | null, view: PaneView, handlers: PaneHandlers) {
   const { Box, Text, Button, Link } = els
-  const usage = stats?.byService[service.name]
+  // A stopped container's last sample (0%, a few KB) says nothing; show usage only while it runs.
+  const usage = isRunning(service) ? stats?.byService[service.name] : undefined
   const isOpen = view.expanded.includes(service.name)
   const lines = view.logs[service.name] ?? []
   const notes = [

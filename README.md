@@ -55,7 +55,7 @@ The band appears on its own in any directory with `compose.yaml`, `compose.yml`,
 | `/docker-panel hide` / `show` | Hide or bring back the band; remembered across sessions |
 | `/docker-panel use <dir>` | Follow the compose project in another directory (a monorepo's `docker/`, say); remembered per session directory, `use .` goes back |
 
-The `×` in the band's corner hides it too. Band buttons have hotkeys once the band holds focus (`ctrl+x tab` or a click).
+In the desktop app the `×` in the band's corner hides it too; in the terminal, Claude Code's own `[-]` (or `ctrl+x ctrl+a`) collapses it for the moment. Band buttons have hotkeys once the band holds focus (`ctrl+x tab` or a click).
 
 ## Try it
 

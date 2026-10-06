@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On, ProcessRunResult, RenderElement } from 'claude-code'
 
 import { actionsFor } from '../hooks/actions'
-import { buildSnapshot, newFailures, parsePs, severityOf } from '../hooks/compose'
+import { buildSnapshot, failureText, newFailures, parsePs, severityOf } from '../hooks/compose'
 import type { Inputs } from '../hooks/compose'
 import { resolveProjectDir } from '../hooks/docker'
 
@@ -27,7 +27,10 @@ const CONFIG = JSON.stringify({
   services: { web: {}, api: { build: { context: `${CWD}/api`, dockerfile: 'Dockerfile' } }, db: {} },
 })
 
-type World = { ps: string[]; hashes: Record<string, string>; restarts: number }
+type World = { ps: string[]; hashes: Record<string, string>; restarts: number; isDaemonDown?: boolean }
+
+const DAEMON_DOWN =
+  'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?'
 
 const healthy = (): World => ({
   ps: [
@@ -49,7 +52,12 @@ function fakeDocker(on: On, world: { current: World }, ran: string[][]) {
     const args = [...e.argv].slice(1)
     ran.push(args)
     const joined = args.join(' ')
-    if (joined.startsWith('info')) return ok('29.0.0')
+    if (joined.startsWith('info')) {
+      if (world.current.isDaemonDown) {
+        return { value: { exitCode: 1, stdout: '', stderr: DAEMON_DOWN, isStdoutTruncated: false, isStderrTruncated: false } }
+      }
+      return ok('29.0.0')
+    }
     if (joined === 'compose config --format json') return ok(CONFIG)
     if (joined.startsWith('compose config --hash')) {
       return ok(Object.entries(world.current.hashes).map(([s, h]) => `${s} ${h}`).join('\n'))
@@ -136,6 +144,30 @@ describe('snapshot derivation', () => {
     expect(actionsFor(snap)[0]?.run).toEqual({ kind: 'compose', args: ['up', '-d', '--build', 'api'], busy: 'rebuilding api' })
   })
 
+  test('a stop that docker had to finish with SIGKILL is a stop, not a crash', async () => {
+    const stopped = healthy()
+    stopped.ps[0] = psLine({ id: 'aaaaaaaaaaaa', service: 'web', state: 'exited', exit: 137 })
+    stopped.ps[2] = psLine({ id: 'cccccccccccc', service: 'db', state: 'exited', exit: 143 })
+    const snap = buildSnapshot(inputs(stopped))
+    expect(snap.services.find(s => s.name === 'web')?.status).toBe('stopped')
+    expect(snap.services.find(s => s.name === 'db')?.status).toBe('stopped')
+    expect(severityOf(snap)).toBe('ok')
+    expect(actionsFor(snap)[0]?.label).not.toBe('Ask Claude')
+  })
+
+  test('a SIGKILL from the out-of-memory killer is a crash', async () => {
+    const oom = healthy()
+    oom.ps[1] = psLine({ id: 'bbbbbbbbbbbb', service: 'api', state: 'exited', exit: 137 })
+    const snap = buildSnapshot({
+      ...inputs(oom),
+      facts: { bbbbbbbbbbbb: { restarts: 0, imageId: 'sha256:img', isOomKilled: true } },
+    })
+    const api = snap.services.find(s => s.name === 'api')!
+    expect(api.status).toBe('exited')
+    expect(severityOf(snap)).toBe('failing')
+    expect(failureText(api)).toBe('api was killed: out of memory')
+  })
+
   test('a crash is reported once, and again only when restarts grow', async () => {
     const before = buildSnapshot(inputs(healthy()))
     const crashed = healthy()
@@ -216,7 +248,26 @@ describe('band', () => {
     expect((await ui.findAll({ type: 'Button' })).filter(b => b.key?.startsWith('act-')).map(b => b.props.label)).toEqual(['Restart', 'Down', 'More'])
   })
 
-  test('the corner × hides the band and /docker-panel show brings it back', async ($, on) => {
+  test('the desktop × hides the band; the terminal leaves that to its own [-]', async ($, on) => {
+    mock.clock(on)
+    fakeDocker(on, { current: healthy() }, [])
+    await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+    const panel = (args: string) =>
+      $.command.run({ command: 'docker-panel', args } as Parameters<typeof $.command.run>[0])
+
+    const terminal = await $.ui.mount({ plugin: 'docker-panel', surface: 'terminal', ...BAND })
+    expect(await terminal.find({ key: 'close' })).toBeUndefined()
+    await terminal.unmount()
+
+    const desktop = await $.ui.mount({ plugin: 'docker-panel', surface: 'desktop', ...BAND })
+    await desktop.press({ key: 'close' })
+    expect(await desktop.find({ key: 'chip-web' })).toBeUndefined()
+    expect((await panel('show')).text).toContain('shown')
+    expect(await desktop.find({ key: 'chip-web' })).toBeDefined()
+    await desktop.unmount()
+  })
+
+  test('/docker-panel hide and show work on every surface', async ($, on) => {
     mock.clock(on)
     fakeDocker(on, { current: healthy() }, [])
     await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
@@ -225,13 +276,10 @@ describe('band', () => {
 
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ plugin: 'docker-panel', surface, ...BAND })
-      await ui.press({ key: 'close' })
+      expect((await panel('hide')).text).toContain('hidden')
       expect(await ui.find({ key: 'chip-web' })).toBeUndefined()
       expect((await panel('show')).text).toContain('shown')
       expect(await ui.find({ key: 'chip-web' })).toBeDefined()
-      expect((await panel('hide')).text).toContain('hidden')
-      expect(await ui.find({ key: 'chip-web' })).toBeUndefined()
-      await panel('show')
       await ui.unmount()
     }
   })
@@ -324,6 +372,33 @@ describe('band', () => {
     await pane.press({ key: 'stop-web' })
     await clock.settle()
     expect(ran.some(args => args.join(' ') === 'compose stop web')).toBe(true)
+  })
+
+  test('a daemon that comes back clears its error from the band and the pane', async ($, on) => {
+    mock.clock(on)
+    const world: { current: World } = { current: { ...healthy(), isDaemonDown: true } }
+    fakeDocker(on, world, [])
+    on('ui.open', async () => ({ value: { isPlaced: true } }))
+    await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+    const docker = (args: string) => $.command.run({ command: 'docker', args } as Parameters<typeof $.command.run>[0])
+
+    const band = await $.ui.mount({ plugin: 'docker-panel', surface: 'desktop', ...BAND })
+    expect(await band.find({ type: 'Text', text: /Cannot connect/ })).toBeDefined()
+
+    world.current = healthy()
+    await docker('status')
+    expect(await band.find({ type: 'Text', text: /Cannot connect/ })).toBeUndefined()
+    expect(await band.find({ key: 'chip-web' })).toBeDefined()
+
+    await docker('more')
+    const pane = await $.ui.mount({
+      plugin: 'docker-panel',
+      surface: 'desktop',
+      component: 'Pane',
+      requestId: 'docker-control',
+      props: {} as never,
+    })
+    expect(await pane.find({ type: 'Text', text: /Cannot connect/ })).toBeUndefined()
   })
 
   test('stays out of the way without a compose file', async ($, on) => {
