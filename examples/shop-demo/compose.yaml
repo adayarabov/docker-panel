@@ -1,0 +1,66 @@
+# Demo stack for the docker-panel mod. Uses only local images (no pulls).
+# CRASH=1 in .env makes `api` fail on start and crash-loop.
+name: shop-demo
+
+x-http: &http
+  image: node:22-alpine
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+    interval: 5s
+    retries: 3
+
+x-loop: &loop
+  image: alpine:latest
+
+services:
+  web:
+    <<: *http
+    command: ["node", "-e", "require('http').createServer((q, s) => s.end('web v2')).listen(3000)"]
+    ports:
+      - "38080:3000"
+
+  api:
+    image: node:22-alpine
+    environment:
+      CRASH: ${CRASH:-0}
+    command:
+      - sh
+      - -c
+      - |
+        echo "api: connecting to postgres://db:5432/shop"
+        if [ "$$CRASH" = "1" ]; then
+          echo 'Error: password authentication failed for user "shop"' >&2
+          exit 1
+        fi
+        exec node -e "require('http').createServer((q, s) => s.end('api ok')).listen(8080)"
+    ports:
+      - "38081:8080"
+    restart: on-failure:5
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
+      interval: 5s
+      retries: 3
+
+  admin:
+    <<: *http
+    command: ["node", "-e", "require('http').createServer((q, s) => s.end('admin ok')).listen(3000)"]
+    ports:
+      - "38082:3000"
+
+  docs:
+    <<: *http
+    command: ["node", "-e", "require('http').createServer((q, s) => s.end('docs ok')).listen(3000)"]
+    ports:
+      - "38083:3000"
+
+  worker:
+    <<: *loop
+    command: ["sh", "-c", "while true; do echo 'worker: tick'; sleep 30; done"]
+
+  scheduler:
+    <<: *loop
+    command: ["sh", "-c", "while true; do echo 'scheduler: nothing due'; sleep 60; done"]
+
+  mailer:
+    <<: *loop
+    command: ["sh", "-c", "while true; do echo 'mailer: queue empty'; sleep 45; done"]

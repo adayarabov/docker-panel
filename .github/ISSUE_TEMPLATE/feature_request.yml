@@ -1,0 +1,16 @@
+name: Feature request
+description: Something the band or the /docker command should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation in your Compose workflow where the mod falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How it could look or behave in the band, a command or a toast.

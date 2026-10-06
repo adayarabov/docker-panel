@@ -1,0 +1,20 @@
+{
+  "name": "docker-panel",
+  "owner": {
+    "name": "SKFabric",
+    "url": "https://github.com/SKFabric"
+  },
+  "metadata": {
+    "description": "Docker Compose status and actions inside Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "docker-panel",
+      "source": "./plugins/docker-panel",
+      "description": "Docker Compose status band above the Claude Code prompt: service health, ports, crash and stale-config alerts, one-press actions",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": ["docker", "docker-compose", "devops"]
+    }
+  ]
+}

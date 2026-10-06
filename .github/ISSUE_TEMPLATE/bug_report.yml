@@ -1,0 +1,49 @@
+name: Bug report
+description: The band shows something wrong, an action fails, or the mod does not load
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What the band showed or did, and what you expected instead. A screenshot helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. docker compose up -d
+        2. ...
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Terminal
+        - Terminal (fullscreen)
+        - Desktop app (Code tab)
+        - VS Code
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+    validations:
+      required: true
+  - type: input
+    id: docker-version
+    attributes:
+      label: Docker and Compose versions
+      description: Output of `docker --version` and `docker compose version`
+    validations:
+      required: true
+  - type: textarea
+    id: compose
+    attributes:
+      label: Compose file (trimmed)
+      description: The relevant services, with secrets removed
+      render: yaml

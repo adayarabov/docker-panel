@@ -1,0 +1,90 @@
+# docker-panel
+
+A [Claude Code](https://claude.com/claude-code) mod that keeps your Docker Compose project in sight: a status band above the prompt with every service's health and ports, alerts when a container crashes or runs on stale config, and one-press actions — including handing a crash straight to Claude.
+
+Works in the terminal and in the desktop app's Code tab.
+
+```
+╭─────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ⬢ shop-demo   ✕ api:38081 exited(1) ↻5   ● web:38080   ● worker                           × │
+│ ▲ api exited with code 1, 5 restarts            [ Ask Claude ] [ Logs api ] [ Restart api ] │
+╰─────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+## Features
+
+- **Live status** — one chip per Compose service: running, healthy, starting, unhealthy, exited with code, restart count. Published ports link to `http://localhost:<port>`.
+- **Event-driven** — follows `docker compose events`, with a 15-second fallback poll. No compose file in the session directory, no band.
+- **Hover details** — point at a chip to see Docker's status line, why it is stale, and the last log lines of a failing service.
+- **Crash alerts** — a toast when a service exits non-zero, crash-loops or turns unhealthy. **Ask Claude** puts the failure and its logs into the prompt.
+- **Stale config detection** — compares each running container's compose config hash with the current file, and the image build time with the Dockerfile. **Rebuild & up** rebuilds just the stale services.
+- **Context-aware actions** — Up / Up --build when nothing runs; Logs / Restart / Down when healthy; Ask Claude / Logs / Restart for the failing service.
+
+## Requirements
+
+- Claude Code with function-hook mods (an early-access API; tested on 2.1.288)
+- Docker Engine with the Compose plugin (`docker compose`)
+
+## Install
+
+From this repository's marketplace:
+
+```
+/plugin marketplace add SKFabric/docker-panel
+/plugin install docker-panel@docker-panel
+```
+
+Or load a local checkout for one session:
+
+```bash
+claude --plugin-dir /path/to/docker-panel/plugins/docker-panel
+```
+
+## Usage
+
+The band appears on its own in any directory with `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml`.
+
+| Command | What it does |
+| --- | --- |
+| `/docker` or `/docker status` | Service list with ports and problems |
+| `/docker up [svc]` | `docker compose up -d` |
+| `/docker down` | `docker compose down` (volumes are kept) |
+| `/docker restart [svc]` | `docker compose restart` |
+| `/docker rebuild [svc]` | `up -d --build` for the named or stale services |
+| `/docker logs [svc]` | Last 40 log lines into the transcript |
+| `/docker-panel hide` / `show` | Hide or bring back the band; remembered across sessions |
+
+The `×` in the band's corner hides it too. Band buttons have hotkeys once the band holds focus (`ctrl+x tab` or a click).
+
+## Try it
+
+[`examples/shop-demo`](examples/shop-demo) is a seven-service stack built only from `node:22-alpine` and `alpine`:
+
+```bash
+cd examples/shop-demo
+docker compose up -d
+claude
+```
+
+Set `CRASH=1` in its `.env` and run `docker compose up -d api` to watch a crash loop; edit any service's `command` to see the stale-config state.
+
+## Limitations
+
+- Stale image detection looks at the Dockerfile only, not the rest of the build context.
+- Mouse hover and clicks in the terminal need Claude Code's fullscreen mode; commands work everywhere.
+- Function-hook mods are early access: the API may change between Claude Code releases.
+
+## Development
+
+The plugin lives in [`plugins/docker-panel`](plugins/docker-panel). Opening Claude Code in this repository loads it through the `.claude/skills/docker-panel` symlink, and saving a file hot-reloads it.
+
+```bash
+claude plugin validate plugins/docker-panel
+claude plugin test plugins/docker-panel
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)

@@ -1,0 +1,14 @@
+{
+  "name": "docker-panel",
+  "version": "0.1.0",
+  "description": "Docker Compose status band above the Claude Code prompt: service health, ports, crash and stale-config alerts, one-press actions",
+  "author": {
+    "name": "SKFabric",
+    "url": "https://github.com/SKFabric"
+  },
+  "homepage": "https://github.com/SKFabric/docker-panel",
+  "repository": "https://github.com/SKFabric/docker-panel",
+  "license": "MIT",
+  "keywords": ["docker", "docker-compose", "devops", "status", "mod"],
+  "types": "./types/index.d.ts"
+}

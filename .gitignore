@@ -1,0 +1,8 @@
+# Written by Claude Code each time it loads the plugin
+plugins/*/.claude-plugin/types/
+plugins/*/tsconfig.json
+
+# Local tooling
+node_modules/
+.serena/
+.DS_Store
