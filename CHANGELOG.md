@@ -77,9 +77,9 @@ All notable changes to this project are documented here. The format follows
 - `/docker` command for status and actions, `/docker-panel show|hide` and a corner × to hide the band.
 - `examples/shop-demo` seven-service demo stack.
 
-[Unreleased]: https://github.com/SKFabric/docker-panel/compare/v0.2.3...HEAD
-[0.2.3]: https://github.com/SKFabric/docker-panel/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/SKFabric/docker-panel/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/SKFabric/docker-panel/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/SKFabric/docker-panel/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/SKFabric/docker-panel/releases/tag/v0.1.0
+[Unreleased]: https://github.com/adayarabov/docker-panel/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/adayarabov/docker-panel/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/adayarabov/docker-panel/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/adayarabov/docker-panel/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/adayarabov/docker-panel/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/adayarabov/docker-panel/releases/tag/v0.1.0

@@ -1,8 +1,8 @@
 {
   "name": "docker-panel",
   "owner": {
-    "name": "SKFabric",
-    "url": "https://github.com/SKFabric"
+    "name": "adayarabov",
+    "url": "https://github.com/adayarabov"
   },
   "metadata": {
     "description": "Docker Compose status and actions inside Claude Code"

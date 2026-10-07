@@ -29,7 +29,7 @@ Works in the terminal and in the desktop app's Code tab.
 From this repository's marketplace:
 
 ```
-/plugin marketplace add SKFabric/docker-panel
+/plugin marketplace add adayarabov/docker-panel
 /plugin install docker-panel@docker-panel
 ```
 
