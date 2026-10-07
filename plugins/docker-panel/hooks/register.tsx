@@ -64,6 +64,15 @@ const runtime: {
 
 const QUERY_TIMEOUT_MS = 15_000
 
+async function runCommand($: EngineInterface, name: 'docker' | 'docker-panel', args: string): Promise<{ text: string }> {
+  try {
+    const text = name === 'docker' ? await dockerCommand($, args) : await panelCommand($, args)
+    return { text }
+  } catch (err) {
+    return { text: `docker-panel: /${name} ${args} failed: ${String(err)}` }
+  }
+}
+
 function hostFor($: EngineInterface, dir: string = runtime.cwd): Host {
   return {
     cwd: dir,
@@ -373,18 +382,13 @@ export const register: Register = on => {
     return started
   })
 
-  // One hook for both commands, matched by name inside: a session may spell a
-  // plugin's command with its plugin prefix (`docker-panel:docker`).
-  on('command.run', async ($, e, next) => {
-    const name = e.command.replace(/^docker-panel:/, '')
-    try {
-      if (name === 'docker') return { text: await dockerCommand($, e.args) }
-      if (name === 'docker-panel') return { text: await panelCommand($, e.args) }
-    } catch (err) {
-      return { text: `docker-panel: /${name} ${e.args} failed: ${String(err)}` }
-    }
-    return next(e)
-  })
+  // Hooked by name, so the engine credits this plugin only for its own commands
+  // (an unmatched command.run hook is listed on every command's output). A session
+  // may spell them with the plugin prefix (`docker-panel:docker`), so both forms match.
+  on('command.run', { command: 'docker' }, ($, e) => runCommand($, 'docker', e.args))
+  on('command.run', { command: 'docker-panel:docker' }, ($, e) => runCommand($, 'docker', e.args))
+  on('command.run', { command: 'docker-panel' }, ($, e) => runCommand($, 'docker-panel', e.args))
+  on('command.run', { command: 'docker-panel:docker-panel' }, ($, e) => runCommand($, 'docker-panel', e.args))
 
   // The person closed the pane (its ×, Esc) or it went with an unload: More again.
   on('ui.close', async ($, e, next) => {
